@@ -26,7 +26,7 @@ function addImportIOS(content) {
   } else {
     const swiftClassRegex = /class\s+AppDelegate\s*:\s*RCTAppDelegate\s*\{/m;
     if (swiftClassRegex.test(content)) {
-        return content.replace(swiftClassRegex, `$&\n${codePushImport}`);
+      return content.replace(swiftClassRegex, `$&\n${codePushImport}`);
     }
     return codePushImport + '\n' + content;
   }
@@ -59,12 +59,12 @@ function ensureBundleURLMethodIOS(content) {
     const appDelegateEndRegexObjC = /\@end/m;
     const appDelegateEndRegexSwift = /\}\s*$/m;
     if (appDelegateEndRegexObjC.test(content)) {
-        return content.replace(appDelegateEndRegexObjC, `\n${newMethodBodyObjC}\n\n@end`);
+      return content.replace(appDelegateEndRegexObjC, `\n${newMethodBodyObjC}\n\n@end`);
     } else if (appDelegateEndRegexSwift.test(content)) {
-        const lastBraceIndex = content.lastIndexOf('}');
-        if (lastBraceIndex !== -1) {
-            return content.substring(0, lastBraceIndex) + `\n  ${newMethodBodySwift}\n` + content.substring(lastBraceIndex);
-        }
+      const lastBraceIndex = content.lastIndexOf('}');
+      if (lastBraceIndex !== -1) {
+        return content.substring(0, lastBraceIndex) + `\n  ${newMethodBodySwift}\n` + content.substring(lastBraceIndex);
+      }
     }
   }
   WarningAggregator.addWarningIOS('codepush-plugin', 'Could not find a suitable place to insert bundleURL() method in AppDelegate.');
@@ -207,7 +207,7 @@ const withAndroidMainApplication = (config) => {
         WarningAggregator.addWarningAndroid('codepush-plugin', 'Could not find `isHermesEnabled` property to anchor `getJSBundleFile()` insertion. Please review `MainApplication.kt`.');
       }
     }
-    
+
     modConfig.modResults.contents = content;
     return modConfig;
   });
@@ -217,9 +217,9 @@ const withAndroidGradle = (config) => {
   return withAppBuildGradle(config, (modConfig) => {
     if (modConfig.modResults.language === 'groovy') {
       let content = modConfig.modResults.contents;
-      
+
       // This part adds the codepush.gradle apply line and is correct.
-      const codePushApplyLine = 'apply from: "../../node_modules/@code-push-next/react-native-code-push/android/codepush.gradle"';
+      const codePushApplyLine = 'apply from: "../../node_modules/@appsonair/react-native-code-push/android/codepush.gradle"';
       if (!content.includes(codePushApplyLine)) {
         content += `\n${codePushApplyLine}\n`;
       }
@@ -239,7 +239,7 @@ const withAndroidGradle = (config) => {
       const addFieldToBuildType = (gradleContent, buildType, field) => {
         // Regex to find a specific buildType block that is inside the buildTypes block
         const buildTypeRegex = new RegExp(`(buildTypes\\s*\\{[\\s\\S]*?${buildType}\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})`, 'm');
-        
+
         if (buildTypeRegex.test(gradleContent)) {
           // The build type block (e.g., debug {}) already exists.
           return gradleContent.replace(buildTypeRegex, (match, startBlock, innerContent, endBlock) => {
@@ -254,11 +254,11 @@ const withAndroidGradle = (config) => {
           // The build type block does not exist, so we need to add it.
           const buildTypesRegex = /(buildTypes\s*\{)([\s\S]*?)(\n\s*\})/m;
           if (buildTypesRegex.test(gradleContent)) {
-             // The buildTypes block exists, so add the new build type to it.
-             return gradleContent.replace(buildTypesRegex, (match, startBlock, innerContent, endBlock) => {
-               const newBlock = `\n        ${buildType} {\n${indent}${field.trim()}\n        }`;
-               return `${startBlock}${innerContent.trim()}${newBlock}${endBlock}`;
-             });
+            // The buildTypes block exists, so add the new build type to it.
+            return gradleContent.replace(buildTypesRegex, (match, startBlock, innerContent, endBlock) => {
+              const newBlock = `\n        ${buildType} {\n${indent}${field.trim()}\n        }`;
+              return `${startBlock}${innerContent.trim()}${newBlock}${endBlock}`;
+            });
           } else {
             // The buildTypes block itself doesn't exist, a rare edge case.
             // Expo projects should always have a buildTypes block.
@@ -272,7 +272,7 @@ const withAndroidGradle = (config) => {
       // Each function call operates on the full, updated content, preventing nesting errors.
       content = addFieldToBuildType(content, 'debug', debugConfigFieldLine);
       content = addFieldToBuildType(content, 'release', releaseConfigFieldLine);
-      
+
       modConfig.modResults.contents = content;
     } else {
       WarningAggregator.addWarningAndroid('codepush-plugin', 'Cannot apply build.gradle modifications because it is not a groovy file.');
@@ -292,7 +292,7 @@ const withAndroidStrings = (config, options) => {
       if (existing) {
         existing._ = value;
       } else {
-        strings.push({$: { name, translatable: 'false' }, _: value });
+        strings.push({ $: { name, translatable: 'false' }, _: value });
       }
     };
     if (options.android?.CodePushDeploymentKey) {
@@ -308,17 +308,17 @@ const withAndroidStrings = (config, options) => {
 // --- CORRECTED EXPORT BLOCK ---
 module.exports = (config, options = {}) => {
   if (!options) options = {};
-  
+
   if (options.ios) {
     config = withCodePushAppDelegate(config, options);
     config = withCodePushInfoPlist(config, options);
   }
-  
+
   if (options.android) {
-    config = withAndroidStrings(config, options); 
+    config = withAndroidStrings(config, options);
     // Correctly call the wrapper functions we defined
     config = withAndroidMainApplication(config);
-    config = withAndroidGradle(config); 
+    config = withAndroidGradle(config);
   }
   return config;
 };

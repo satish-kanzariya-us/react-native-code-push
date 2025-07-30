@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import CodePush from "@code-push-next/react-native-code-push";
+import CodePush from "@appsonair/react-native-code-push";
 
 class App extends Component<{}> {
   constructor() {
@@ -18,7 +18,7 @@ class App extends Component<{}> {
   }
 
   codePushStatusDidChange(syncStatus) {
-    switch(syncStatus) {
+    switch (syncStatus) {
       case CodePush.SyncStatus.CHECKING_FOR_UPDATE:
         this.setState({ syncMessage: "Checking for update." });
         break;
@@ -106,9 +106,9 @@ class App extends Component<{}> {
           <Text style={styles.syncButton}>Press for dialog-driven sync</Text>
         </TouchableOpacity>
         {progressView}
-        <Image style={styles.image} resizeMode={"contain"} source={require("./images/laptop_phone_howitworks.png")}/>
+        <Image style={styles.image} resizeMode={"contain"} source={require("./images/laptop_phone_howitworks.png")} />
         <TouchableOpacity onPress={this.toggleAllowRestart.bind(this)}>
-          <Text style={styles.restartToggleButton}>Restart { this.state.restartAllowed ? "allowed" : "forbidden"}</Text>
+          <Text style={styles.restartToggleButton}>Restart {this.state.restartAllowed ? "allowed" : "forbidden"}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={this.getUpdateMetadata.bind(this)}>
           <Text style={styles.syncButton}>Press for Update Metadata</Text>

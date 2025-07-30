@@ -29,7 +29,7 @@
     },
     "plugins": [
       [
-        "@code-push-next/react-native-code-push/expo",
+        "@appsonair/react-native-code-push/expo",
         {
           "ios": {
             "CodePushDeploymentKey": "mock-ios-deployment-key",

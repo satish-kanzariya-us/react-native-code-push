@@ -13,7 +13,7 @@ import {
     View
 } from 'react-native';
 
-import CodePush from "@code-push-next/react-native-code-push";
+import CodePush from "@appsonair/react-native-code-push";
 
 var testScenario = require("./CODE_PUSH_INDEX_JS_PATH");
 
@@ -137,7 +137,7 @@ class CODE_PUSH_TEST_APP_NAME extends Component {
             <View style={styles.container}>
                 <Text style={styles.welcome}>
                     CodePush React-Native Plugin Tests
-            </Text>
+                </Text>
                 <Text style={styles.instructions}>
                     {testScenario.getScenarioName()}{this.state.message}
                 </Text>
