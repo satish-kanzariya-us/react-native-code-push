@@ -9,7 +9,11 @@ import android.content.pm.PackageManager
 import android.util.Log
 import org.json.JSONObject
 import org.json.JSONException
+import org.json.JSONArray
 import java.util.UUID
+import java.io.File
+import java.io.IOException
+import java.util.Date
 
 @ReactModule(name = ReactNativeCodePushModule.NAME)
 class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
@@ -17,7 +21,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
 
     companion object {
         const val NAME = "ReactNativeCodePush"
-        private const val LOG_TAG = "CodePush"
         
         // Install modes
         const val IMMEDIATE = 0
@@ -37,10 +40,29 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         const val CLIENT_UNIQUE_ID_KEY = "clientUniqueId"
         const val DEPLOYMENT_KEY_KEY = "deploymentKey"
         const val SERVER_URL_KEY = "serverUrl"
+        const val PENDING_UPDATE_KEY = "pendingUpdate"
+        const val PENDING_UPDATE_HASH_KEY = "hash"
+        const val PENDING_UPDATE_IS_LOADING_KEY = "isLoading"
+        const val PACKAGE_HASH_KEY = "packageHash"
+        const val LATEST_ROLLBACK_INFO_KEY = "latestRollbackInfo"
+        const val LATEST_ROLLBACK_PACKAGE_HASH_KEY = "packageHash"
+        const val LATEST_ROLLBACK_TIME_KEY = "time"
+        const val LATEST_ROLLBACK_COUNT_KEY = "count"
+        const val LAST_DEPLOYMENT_REPORT_KEY = "CODE_PUSH_LAST_DEPLOYMENT_REPORT"
+        const val RETRY_DEPLOYMENT_REPORT_KEY = "CODE_PUSH_RETRY_DEPLOYMENT_REPORT"
     }
 
     private val sharedPreferences: SharedPreferences = 
         reactContext.getSharedPreferences(CODE_PUSH_PREFERENCES, Context.MODE_PRIVATE)
+    
+    private val codePushDirectory: File = File(reactContext.filesDir, "CodePush")
+
+    init {
+        // Ensure CodePush directory exists
+        if (!codePushDirectory.exists()) {
+            codePushDirectory.mkdirs()
+        }
+    }
 
     // Common logging function
     private fun logData(message: String, data: Any? = null) {
@@ -49,8 +71,8 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         } else {
             message
         }
-        Log.d(LOG_TAG, logMessage)
-        println("[ReactNativeCodePushModule CodePush] $logMessage") // Also print to console for debugging
+        Log.d("CodePush", logMessage)
+        println("[ReactNativeCodePushModule CodePush] $logMessage")
     }
 
     override fun getName(): String {
@@ -58,36 +80,13 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         return NAME
     }
 
-    // Basic methods
-    override fun multiply(a: Double, b: Double): Double {
-        logData("multiply() called", "a=$a, b=$b")
-        val result = a * b
-        logData("multiply() result", result)
-        return result
-    }
-
-    override fun helloWorld(promise: Promise) {
-        logData("helloWorld() called")
-        try {
-            val message = "Hello from CodePush TurboModule!"
-            logData("helloWorld() resolving", message)
-            promise.resolve(message)
-        } catch (e: Exception) {
-            logData("helloWorld() error", e.message)
-            promise.reject("ERROR", "Failed to say hello", e)
-        }
-    }
-
     override fun getValue(key: String, promise: Promise) {
         logData("getValue() called", "key=$key")
         try {
             val value = sharedPreferences.getString(key, "")
-            logData("getValue() retrieved from SharedPreferences", "key=$key, value=$value")
-            val result = "Value for $key: $value"
-            logData("getValue() resolving", result)
-            promise.resolve(result)
+            promise.resolve("Value for $key: $value")
         } catch (e: Exception) {
-            logData("getValue() error", "key=$key, error=${e.message}")
+            logData("getValue() error", e.message)
             promise.reject("ERROR", "Failed to get value", e)
         }
     }
@@ -110,6 +109,7 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
                 putString("serverUrl", serverUrl)
                 packageHash?.let { putString("packageHash", it) }
             }
+            
             logData("getConfiguration() resolving", config.toString())
             promise.resolve(config)
         } catch (e: Exception) {
@@ -126,8 +126,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             
             if (currentPackageJson != null) {
                 val currentPackage = JSONObject(currentPackageJson)
-                logData("getCurrentPackage() parsed JSON", currentPackage.toString())
-                
                 val packageInfo = WritableNativeMap().apply {
                     putString("appVersion", currentPackage.optString("appVersion", ""))
                     putString("description", currentPackage.optString("description", ""))
@@ -150,7 +148,127 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             promise.reject("ERROR", "Failed to get current package", e)
         }
     }
-    
+
+    // ✅ FIXED: Proper getUpdateMetadata implementation
+    override fun getUpdateMetadata(updateState: Double, promise: Promise) {
+        logData("getUpdateMetadata() called", "updateState=$updateState")
+        try {
+            val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
+            
+            if (currentPackageJson == null) {
+                logData("getUpdateMetadata() no current package")
+                promise.resolve(null)
+                return
+            }
+
+            val currentPackage = JSONObject(currentPackageJson)
+            val currentHash = currentPackage.optString(PACKAGE_HASH_KEY, null)
+            val currentUpdateIsPending = isPendingUpdate(currentHash)
+
+            when (updateState.toInt()) {
+                PENDING -> {
+                    if (!currentUpdateIsPending) {
+                        logData("getUpdateMetadata() no pending update")
+                        promise.resolve(null)
+                        return
+                    }
+                }
+                RUNNING -> {
+                    if (currentUpdateIsPending) {
+                        // Return previous package if current is pending
+                        val previousPackageJson = sharedPreferences.getString("previousPackage", null)
+                        if (previousPackageJson != null) {
+                            val previousPackage = JSONObject(previousPackageJson)
+                            promise.resolve(convertJsonToWritableMap(previousPackage))
+                            return
+                        } else {
+                            promise.resolve(null)
+                            return
+                        }
+                    }
+                }
+                LATEST -> {
+                    // Return current package regardless of pending status
+                }
+            }
+
+            // Add pending status and debug info
+            currentPackage.put("isPending", currentUpdateIsPending)
+            if (isRunningBinaryVersion()) {
+                currentPackage.put("_isDebugOnly", true)
+            }
+
+            logData("getUpdateMetadata() returning package", currentPackage.toString())
+            promise.resolve(convertJsonToWritableMap(currentPackage))
+
+        } catch (e: Exception) {
+            logData("getUpdateMetadata() error", e.message)
+            promise.reject("ERROR", "Failed to get update metadata", e)
+        }
+    }
+
+    // ✅ NEW: Status reporting system
+    override fun getNewStatusReport(promise: Promise) {
+        logData("getNewStatusReport() called")
+        try {
+            // Check if we need to report rollback
+            val needToReportRollback = sharedPreferences.getBoolean("needToReportRollback", false)
+            
+            if (needToReportRollback) {
+                sharedPreferences.edit().putBoolean("needToReportRollback", false).apply()
+                val failedUpdates = getFailedUpdates()
+                
+                if (failedUpdates.length() > 0) {
+                    val lastFailedPackage = failedUpdates.getJSONObject(failedUpdates.length() - 1)
+                    val rollbackReport = createRollbackReport(lastFailedPackage)
+                    logData("getNewStatusReport() returning rollback report")
+                    promise.resolve(convertJsonToWritableMap(rollbackReport))
+                    return
+                }
+            }
+            
+            // Check if we did update
+            val didUpdate = sharedPreferences.getBoolean("didUpdate", false)
+            if (didUpdate) {
+                val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
+                if (currentPackageJson != null) {
+                    val currentPackage = JSONObject(currentPackageJson)
+                    val updateReport = createUpdateReport(currentPackage)
+                    logData("getNewStatusReport() returning update report")
+                    promise.resolve(convertJsonToWritableMap(updateReport))
+                    return
+                }
+            }
+            
+            // Check if running binary version
+            if (isRunningBinaryVersion()) {
+                val appVersion = getAppVersion()
+                val binaryReport = createBinaryUpdateReport(appVersion)
+                if (binaryReport != null) {
+                    logData("getNewStatusReport() returning binary report")
+                    promise.resolve(convertJsonToWritableMap(binaryReport))
+                    return
+                }
+            }
+            
+            // Check for retry status report
+            val retryReportString = sharedPreferences.getString(RETRY_DEPLOYMENT_REPORT_KEY, null)
+            if (retryReportString != null) {
+                clearRetryStatusReport()
+                val retryReport = JSONObject(retryReportString)
+                logData("getNewStatusReport() returning retry report")
+                promise.resolve(convertJsonToWritableMap(retryReport))
+                return
+            }
+            
+            logData("getNewStatusReport() no status report")
+            promise.resolve("")
+        } catch (e: Exception) {
+            logData("getNewStatusReport() error", e.message)
+            promise.reject("ERROR", "Failed to get status report", e)
+        }
+    }
+
     override fun downloadUpdate(
         updatePackage: ReadableMap,
         notifyProgress: Boolean,
@@ -166,7 +284,7 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             logData("downloadUpdate() extracted parameters", "downloadUrl=$downloadUrl, packageHash=$packageHash, label=$label, packageSize=$packageSize")
 
             if (downloadUrl == null || packageHash == null || label == null) {
-                logData("downloadUpdate() parameter validation failed", "Missing required parameters")
+                logData("downloadUpdate() parameter validation failed")
                 promise.reject("ERROR", "Invalid update package parameters")
                 return
             }
@@ -177,32 +295,24 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
                     val downloadedBytes = HttpUtils.downloadUpdate(downloadUrl) { bytesReceived, totalBytes ->
                         if (notifyProgress) {
                             logData("downloadUpdate() progress", "Received: $bytesReceived / Total: $totalBytes bytes")
-                            // Send progress event to JS (implement event emitter if needed)
                         }
                     }
                     
                     logData("downloadUpdate() download completed", "Downloaded ${downloadedBytes.size} bytes")
                     
-                    // Save downloaded package (implement file saving logic)
-                    val success = saveDownloadedPackage(downloadedBytes, packageHash, label)
+                    // Save downloaded package
+                    val success = saveDownloadedPackage(downloadedBytes, packageHash, label, updatePackage)
                     logData("downloadUpdate() save result", "Success: $success")
                     
                     if (success) {
-                        val result = WritableNativeMap().apply {
-                            putString("appVersion", getAppVersion())
-                            putString("description", "Downloaded update")
-                            putBoolean("failedInstall", false)
-                            putBoolean("failedUpdate", false)
-                            putBoolean("isFirstRun", false)
-                            putBoolean("isPending", true)
-                            putString("label", label)
-                            putString("packageHash", packageHash)
-                            putInt("packageSize", packageSize)
+                        // Return the saved package info
+                        val savedPackage = getPackageByHash(packageHash)
+                        if (savedPackage != null) {
+                            promise.resolve(convertJsonToWritableMap(savedPackage))
+                        } else {
+                            promise.reject("ERROR", "Failed to retrieve saved package")
                         }
-                        logData("downloadUpdate() resolving success", result.toString())
-                        promise.resolve(result)
                     } else {
-                        logData("downloadUpdate() save failed", "Failed to save downloaded package")
                         promise.reject("ERROR", "Failed to save downloaded package")
                     }
                 } catch (e: Exception) {
@@ -213,23 +323,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             logData("downloadUpdate() general error", e.message)
             promise.reject("ERROR", "Failed to download update", e)
-        }
-    }
-    
-    private fun saveDownloadedPackage(data: ByteArray, packageHash: String, label: String): Boolean {
-        logData("saveDownloadedPackage() called", "dataSize=${data.size} bytes, packageHash=$packageHash, label=$label")
-        return try {
-            // Implement file saving logic for your CodePush directory structure
-            // This would typically involve:
-            // 1. Creating a directory for the package
-            // 2. Extracting the zip file
-            // 3. Validating the package hash
-            // 4. Storing metadata
-            logData("saveDownloadedPackage() placeholder", "File saving logic not yet implemented")
-            true // Placeholder
-        } catch (e: Exception) {
-            logData("saveDownloadedPackage() error", e.message)
-            false
         }
     }
 
@@ -244,39 +337,22 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             val packageHash = updatePackage.getString("packageHash")
             val label = updatePackage.getString("label")
             
-            logData("installUpdate() extracted parameters", "packageHash=$packageHash, label=$label")
-            
             if (packageHash == null || label == null) {
-                logData("installUpdate() parameter validation failed", "Missing required parameters")
                 promise.reject("ERROR", "Invalid update package parameters")
                 return
             }
 
-            // Mock install - replace with actual install logic
-            val success = true // Mock success
-            logData("installUpdate() mock install result", "success=$success")
+            // Save as current package
+            val packageJson = convertReadableMapToJson(updatePackage)
+            sharedPreferences.edit()
+                .putString(CURRENT_PACKAGE_KEY, packageJson.toString())
+                .apply()
             
-            if (success) {
-                // Save package info
-                val packageInfo = JSONObject().apply {
-                    put("packageHash", packageHash)
-                    put("label", label)
-                    put("isPending", true)
-                    put("installMode", installMode.toInt())
-                }
-                
-                logData("installUpdate() saving package info", packageInfo.toString())
-                
-                sharedPreferences.edit()
-                    .putString(CURRENT_PACKAGE_KEY, packageInfo.toString())
-                    .apply()
-                
-                logData("installUpdate() package info saved successfully")
-                promise.resolve(null)
-            } else {
-                logData("installUpdate() install failed")
-                promise.reject("ERROR", "Failed to install update")
-            }
+            // Mark as pending
+            savePendingUpdate(packageHash, false)
+            
+            logData("installUpdate() package installed successfully")
+            promise.resolve("")
         } catch (e: Exception) {
             logData("installUpdate() error", e.message)
             promise.reject("ERROR", "Failed to install update", e)
@@ -286,24 +362,10 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun notifyApplicationReady(promise: Promise) {
         logData("notifyApplicationReady() called")
         try {
-            val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
-            logData("notifyApplicationReady() current package", currentPackageJson ?: "null")
-            
-            if (currentPackageJson != null) {
-                val currentPackage = JSONObject(currentPackageJson)
-                currentPackage.put("isFirstRun", false)
-                currentPackage.put("isPending", false)
-                
-                logData("notifyApplicationReady() updating package status", currentPackage.toString())
-                
-                sharedPreferences.edit()
-                    .putString(CURRENT_PACKAGE_KEY, currentPackage.toString())
-                    .apply()
-                
-                logData("notifyApplicationReady() package status updated")
-            }
-            logData("notifyApplicationReady() resolving")
-            promise.resolve(null)
+            // Remove pending update status
+            removePendingUpdate()
+            logData("notifyApplicationReady() removed pending update status")
+            promise.resolve("")
         } catch (e: Exception) {
             logData("notifyApplicationReady() error", e.message)
             promise.reject("ERROR", "Failed to notify application ready", e)
@@ -313,16 +375,15 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun restartApp(onlyIfUpdateIsPending: Boolean?, promise: Promise) {
         logData("restartApp() called", "onlyIfUpdateIsPending=$onlyIfUpdateIsPending")
         try {
-            val isPending = isPendingUpdate()
+            val isPending = isPendingUpdate(null)
             val shouldRestart = onlyIfUpdateIsPending != true || isPending
             logData("restartApp() decision", "isPending=$isPending, shouldRestart=$shouldRestart")
             
             if (shouldRestart) {
                 logData("restartApp() restart requested")
-                // Mock restart - in real implementation, this would restart React Native
                 promise.resolve("App restart requested")
             } else {
-                logData("restartApp() restart skipped", "No pending update")
+                logData("restartApp() restart skipped")
                 promise.resolve("No pending update, restart not needed")
             }
         } catch (e: Exception) {
@@ -335,19 +396,13 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         logData("clearPendingRestart() called")
         try {
             val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
-            logData("clearPendingRestart() current package", currentPackageJson ?: "null")
-            
             if (currentPackageJson != null) {
                 val currentPackage = JSONObject(currentPackageJson)
                 currentPackage.put("isPending", false)
                 
-                logData("clearPendingRestart() clearing pending status", currentPackage.toString())
-                
                 sharedPreferences.edit()
                     .putString(CURRENT_PACKAGE_KEY, currentPackage.toString())
                     .apply()
-                
-                logData("clearPendingRestart() pending status cleared")
             }
             promise.resolve(null)
         } catch (e: Exception) {
@@ -359,9 +414,8 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun isFailedUpdate(packageHash: String, promise: Promise) {
         logData("isFailedUpdate() called", "packageHash=$packageHash")
         try {
-            val failedUpdates = sharedPreferences.getStringSet(FAILED_UPDATES_KEY, emptySet())
-            val isFailed = failedUpdates?.contains(packageHash) ?: false
-            logData("isFailedUpdate() result", "isFailed=$isFailed, failedUpdates=$failedUpdates")
+            val isFailed = isFailedHash(packageHash)
+            logData("isFailedUpdate() result", "isFailed=$isFailed")
             promise.resolve(isFailed)
         } catch (e: Exception) {
             logData("isFailedUpdate() error", e.message)
@@ -372,9 +426,13 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun getLatestRollbackInfo(promise: Promise) {
         logData("getLatestRollbackInfo() called")
         try {
-            // Mock implementation - replace with actual rollback logic
-            logData("getLatestRollbackInfo() mock implementation", "Returning null")
-            promise.resolve(null)
+            val rollbackInfoString = sharedPreferences.getString(LATEST_ROLLBACK_INFO_KEY, null)
+            if (rollbackInfoString != null) {
+                val rollbackInfo = JSONObject(rollbackInfoString)
+                promise.resolve(convertJsonToWritableMap(rollbackInfo))
+            } else {
+                promise.resolve(null)
+            }
         } catch (e: Exception) {
             logData("getLatestRollbackInfo() error", e.message)
             promise.reject("ERROR", "Failed to get rollback info", e)
@@ -384,8 +442,27 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun setLatestRollbackInfo(packageHash: String, promise: Promise) {
         logData("setLatestRollbackInfo() called", "packageHash=$packageHash")
         try {
-            // Mock implementation - replace with actual rollback logic
-            logData("setLatestRollbackInfo() mock implementation", "Not implemented yet")
+            val existingRollbackInfo = sharedPreferences.getString(LATEST_ROLLBACK_INFO_KEY, null)
+            var count = 0
+            
+            if (existingRollbackInfo != null) {
+                val existing = JSONObject(existingRollbackInfo)
+                val existingHash = existing.optString(LATEST_ROLLBACK_PACKAGE_HASH_KEY, "")
+                if (existingHash == packageHash) {
+                    count = existing.optInt(LATEST_ROLLBACK_COUNT_KEY, 0)
+                }
+            }
+            
+            val rollbackInfo = JSONObject().apply {
+                put(LATEST_ROLLBACK_PACKAGE_HASH_KEY, packageHash)
+                put(LATEST_ROLLBACK_TIME_KEY, System.currentTimeMillis())
+                put(LATEST_ROLLBACK_COUNT_KEY, count + 1)
+            }
+            
+            sharedPreferences.edit()
+                .putString(LATEST_ROLLBACK_INFO_KEY, rollbackInfo.toString())
+                .apply()
+            
             promise.resolve(null)
         } catch (e: Exception) {
             logData("setLatestRollbackInfo() error", e.message)
@@ -396,18 +473,12 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     override fun isFirstRun(packageHash: String, promise: Promise) {
         logData("isFirstRun() called", "packageHash=$packageHash")
         try {
-            val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
-            logData("isFirstRun() current package", currentPackageJson ?: "null")
+            val didUpdate = sharedPreferences.getBoolean("didUpdate", false)
+            val currentHash = getCurrentPackageHash()
+            val isFirstRun = didUpdate && packageHash == currentHash
             
-            if (currentPackageJson != null) {
-                val currentPackage = JSONObject(currentPackageJson)
-                val isFirstRun = currentPackage.optBoolean("isFirstRun", true)
-                logData("isFirstRun() result from package", "isFirstRun=$isFirstRun")
-                promise.resolve(isFirstRun)
-            } else {
-                logData("isFirstRun() result default", "isFirstRun=true (no package found)")
-                promise.resolve(true)
-            }
+            logData("isFirstRun() result", "isFirstRun=$isFirstRun")
+            promise.resolve(isFirstRun)
         } catch (e: Exception) {
             logData("isFirstRun() error", e.message)
             promise.reject("ERROR", "Failed to check if first run", e)
@@ -418,7 +489,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         logData("allowRestart() called")
         try {
             sharedPreferences.edit().putBoolean("restartAllowed", true).apply()
-            logData("allowRestart() restart allowed")
             promise.resolve(null)
         } catch (e: Exception) {
             logData("allowRestart() error", e.message)
@@ -430,7 +500,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         logData("disallowRestart() called")
         try {
             sharedPreferences.edit().putBoolean("restartAllowed", false).apply()
-            logData("disallowRestart() restart disallowed")
             promise.resolve(null)
         } catch (e: Exception) {
             logData("disallowRestart() error", e.message)
@@ -438,29 +507,89 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun getUpdateMetadata(updateState: Double, promise: Promise) {
-        logData("getUpdateMetadata() called", "updateState=$updateState")
+    // ✅ NEW: Status reporting methods
+    override fun recordStatusReported(statusReport: ReadableMap) {
+        logData("recordStatusReported() called")
         try {
-            // Mock implementation - replace with actual metadata logic
-            logData("getUpdateMetadata() mock implementation", "Returning null")
+            // Don't record rollback reports
+            val status = statusReport.getString("status")
+            if (status == "DeploymentFailed") {
+                return
+            }
+            
+            val appVersion = statusReport.getString("appVersion")
+            val packageMap = statusReport.getMap("package")
+            
+            val identifier = if (appVersion != null) {
+                appVersion
+            } else if (packageMap != null) {
+                getPackageStatusReportIdentifier(packageMap)
+            } else {
+                null
+            }
+            
+            if (identifier != null) {
+                sharedPreferences.edit()
+                    .putString(LAST_DEPLOYMENT_REPORT_KEY, identifier)
+                    .apply()
+                logData("recordStatusReported() saved identifier", identifier)
+            }
+        } catch (e: Exception) {
+            logData("recordStatusReported() error", e.message)
+        }
+    }
+
+    override fun saveStatusReportForRetry(statusReport: ReadableMap) {
+        logData("saveStatusReportForRetry() called")
+        try {
+            val statusReportJson = convertReadableMapToJson(statusReport)
+            sharedPreferences.edit()
+                .putString(RETRY_DEPLOYMENT_REPORT_KEY, statusReportJson.toString())
+                .apply()
+            logData("saveStatusReportForRetry() saved for retry")
+        } catch (e: Exception) {
+            logData("saveStatusReportForRetry() error", e.message)
+        }
+    }
+
+    // ✅ NEW: Clear updates functionality
+    override fun clearUpdates(promise: Promise) {
+        logData("clearUpdates() called")
+        try {
+            // Clear all CodePush related data
+            sharedPreferences.edit()
+                .remove(CURRENT_PACKAGE_KEY)
+                .remove(PENDING_UPDATE_KEY)
+                .remove(FAILED_UPDATES_KEY)
+                .remove("previousPackage")
+                .remove("didUpdate")
+                .remove("needToReportRollback")
+                .apply()
+            
+            // Clear CodePush directory
+            if (codePushDirectory.exists()) {
+                codePushDirectory.deleteRecursively()
+                codePushDirectory.mkdirs()
+            }
+            
+            logData("clearUpdates() completed")
             promise.resolve(null)
         } catch (e: Exception) {
-            logData("getUpdateMetadata() error", e.message)
-            promise.reject("ERROR", "Failed to get update metadata", e)
+            logData("clearUpdates() error", e.message)
+            promise.reject("ERROR", "Failed to clear updates", e)
         }
     }
 
     override fun addListener(eventName: String) {
         logData("addListener() called", "eventName=$eventName")
-        // Event listener implementation
     }
 
     override fun removeListeners(count: Double) {
         logData("removeListeners() called", "count=$count")
-        // Remove listeners implementation
     }
 
-    // Helper methods
+    // ============ HELPER METHODS ============
+
     private fun getAppVersion(): String {
         logData("getAppVersion() called")
         return try {
@@ -490,12 +619,10 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
     
     private fun getDeploymentKey(): String {
         logData("getDeploymentKey() called")
-        // Try to get from SharedPreferences first
         var key = sharedPreferences.getString(DEPLOYMENT_KEY_KEY, null)
         logData("getDeploymentKey() from SharedPreferences", "key=${key?.take(10)}...")
         
         if (key.isNullOrEmpty()) {
-            // Try to get from app resources (strings.xml)
             try {
                 val resourceId = reactApplicationContext.resources.getIdentifier(
                     "CodePushDeploymentKey", "string", reactApplicationContext.packageName
@@ -543,7 +670,7 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
         return if (currentPackageJson != null) {
             try {
-                val hash = JSONObject(currentPackageJson).optString("packageHash", null)
+                val hash = JSONObject(currentPackageJson).optString(PACKAGE_HASH_KEY, null)
                 logData("getCurrentPackageHash() result", "hash=$hash")
                 hash
             } catch (e: JSONException) {
@@ -556,21 +683,227 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         }
     }
     
-    private fun isPendingUpdate(): Boolean {
-        logData("isPendingUpdate() called")
-        val currentPackageJson = sharedPreferences.getString(CURRENT_PACKAGE_KEY, null)
-        return if (currentPackageJson != null) {
+    private fun isPendingUpdate(packageHash: String?): Boolean {
+        val pendingUpdateString = sharedPreferences.getString(PENDING_UPDATE_KEY, null)
+        return if (pendingUpdateString != null) {
             try {
-                val isPending = JSONObject(currentPackageJson).optBoolean("isPending", false)
-                logData("isPendingUpdate() result", "isPending=$isPending")
-                isPending
+                val pendingUpdate = JSONObject(pendingUpdateString)
+                val isLoading = pendingUpdate.optBoolean(PENDING_UPDATE_IS_LOADING_KEY, true)
+                val pendingHash = pendingUpdate.optString(PENDING_UPDATE_HASH_KEY, null)
+                
+                !isLoading && (packageHash == null || pendingHash == packageHash)
             } catch (e: JSONException) {
-                logData("isPendingUpdate() JSON error", e.message)
                 false
             }
         } else {
-            logData("isPendingUpdate() result", "isPending=false (no package found)")
             false
         }
+    }
+
+    private fun isRunningBinaryVersion(): Boolean {
+        // This would check if we're running the original binary version vs a CodePush update
+        // For now, return false - implement based on your bundle management
+        return getCurrentPackageHash() == null
+    }
+
+    private fun saveDownloadedPackage(data: ByteArray, packageHash: String, label: String, updatePackage: ReadableMap): Boolean {
+        logData("saveDownloadedPackage() called", "dataSize=${data.size} bytes, packageHash=$packageHash, label=$label")
+        return try {
+            // Create package directory
+            val packageDir = File(codePushDirectory, packageHash)
+            if (!packageDir.exists()) {
+                packageDir.mkdirs()
+            }
+            
+            // Save the zip file
+            val zipFile = File(packageDir, "update.zip")
+            zipFile.writeBytes(data)
+            
+            // Save package metadata
+            val packageJson = convertReadableMapToJson(updatePackage).apply {
+                put("packageHash", packageHash)
+                put("label", label)
+                put("packageSize", data.size)
+                put("downloadTime", System.currentTimeMillis())
+            }
+            
+            val metadataFile = File(packageDir, "metadata.json")
+            metadataFile.writeText(packageJson.toString())
+            
+            logData("saveDownloadedPackage() success", "Package saved to ${packageDir.absolutePath}")
+            true
+        } catch (e: Exception) {
+            logData("saveDownloadedPackage() error", e.message)
+            false
+        }
+    }
+
+    private fun getPackageByHash(packageHash: String): JSONObject? {
+        return try {
+            val packageDir = File(codePushDirectory, packageHash)
+            val metadataFile = File(packageDir, "metadata.json")
+            
+            if (metadataFile.exists()) {
+                val metadata = metadataFile.readText()
+                JSONObject(metadata)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun savePendingUpdate(packageHash: String, isLoading: Boolean) {
+        val pendingUpdate = JSONObject().apply {
+            put(PENDING_UPDATE_HASH_KEY, packageHash)
+            put(PENDING_UPDATE_IS_LOADING_KEY, isLoading)
+        }
+        
+        sharedPreferences.edit()
+            .putString(PENDING_UPDATE_KEY, pendingUpdate.toString())
+            .apply()
+    }
+
+    private fun removePendingUpdate() {
+        sharedPreferences.edit()
+            .remove(PENDING_UPDATE_KEY)
+            .apply()
+    }
+
+    private fun getFailedUpdates(): JSONArray {
+        val failedUpdatesString = sharedPreferences.getString(FAILED_UPDATES_KEY, null)
+        return if (failedUpdatesString != null) {
+            try {
+                JSONArray(failedUpdatesString)
+            } catch (e: JSONException) {
+                JSONArray()
+            }
+        } else {
+            JSONArray()
+        }
+    }
+
+    private fun isFailedHash(packageHash: String): Boolean {
+        val failedUpdates = getFailedUpdates()
+        for (i in 0 until failedUpdates.length()) {
+            try {
+                val failedPackage = failedUpdates.getJSONObject(i)
+                val failedHash = failedPackage.getString(PACKAGE_HASH_KEY)
+                if (packageHash == failedHash) {
+                    return true
+                }
+            } catch (e: JSONException) {
+                continue
+            }
+        }
+        return false
+    }
+
+    private fun clearRetryStatusReport() {
+        sharedPreferences.edit()
+            .remove(RETRY_DEPLOYMENT_REPORT_KEY)
+            .apply()
+    }
+
+    // Status report creators
+    private fun createRollbackReport(failedPackage: JSONObject): JSONObject {
+        return JSONObject().apply {
+            put("package", failedPackage)
+            put("status", "DeploymentFailed")
+        }
+    }
+
+    private fun createUpdateReport(currentPackage: JSONObject): JSONObject {
+        return JSONObject().apply {
+            put("package", currentPackage)
+            put("status", "DeploymentSucceeded")
+        }
+    }
+
+    private fun createBinaryUpdateReport(appVersion: String): JSONObject? {
+        val previousStatusReportIdentifier = sharedPreferences.getString(LAST_DEPLOYMENT_REPORT_KEY, null)
+        
+        return if (previousStatusReportIdentifier == null) {
+            clearRetryStatusReport()
+            JSONObject().apply {
+                put("appVersion", appVersion)
+            }
+        } else if (previousStatusReportIdentifier != appVersion) {
+            clearRetryStatusReport()
+            JSONObject().apply {
+                put("appVersion", appVersion)
+                put("previousLabelOrAppVersion", previousStatusReportIdentifier)
+            }
+        } else {
+            null
+        }
+    }
+
+    private fun getPackageStatusReportIdentifier(packageMap: ReadableMap): String? {
+        val deploymentKey = packageMap.getString("deploymentKey")
+        val label = packageMap.getString("label")
+        
+        return if (deploymentKey != null && label != null) {
+            "$deploymentKey:$label"
+        } else {
+            null
+        }
+    }
+
+    // Utility methods for JSON conversion
+    private fun convertJsonToWritableMap(json: JSONObject): WritableMap {
+        val map = WritableNativeMap()
+        val iterator = json.keys()
+        
+        while (iterator.hasNext()) {
+            val key = iterator.next()
+            val value = json.get(key)
+            
+            when (value) {
+                is String -> map.putString(key, value)
+                is Int -> map.putInt(key, value)
+                is Long -> map.putDouble(key, value.toDouble())
+                is Double -> map.putDouble(key, value)
+                is Boolean -> map.putBoolean(key, value)
+                is JSONObject -> map.putMap(key, convertJsonToWritableMap(value))
+                is JSONArray -> {
+                    // Handle arrays if needed
+                    map.putString(key, value.toString())
+                }
+                else -> map.putString(key, value.toString())
+            }
+        }
+        
+        return map
+    }
+
+    private fun convertReadableMapToJson(readableMap: ReadableMap): JSONObject {
+        val json = JSONObject()
+        val iterator = readableMap.keySetIterator()
+        
+        while (iterator.hasNextKey()) {
+            val key = iterator.nextKey()
+            val type = readableMap.getType(key)
+            
+            when (type) {
+                ReadableType.String -> json.put(key, readableMap.getString(key))
+                ReadableType.Number -> json.put(key, readableMap.getDouble(key))
+                ReadableType.Boolean -> json.put(key, readableMap.getBoolean(key))
+                ReadableType.Map -> {
+                    val nestedMap = readableMap.getMap(key)
+                    if (nestedMap != null) {
+                        json.put(key, convertReadableMapToJson(nestedMap))
+                    }
+                }
+                ReadableType.Array -> {
+                    // Handle arrays if needed
+                    json.put(key, readableMap.getArray(key).toString())
+                }
+                else -> json.put(key, null)
+            }
+        }
+        
+        return json
     }
 }

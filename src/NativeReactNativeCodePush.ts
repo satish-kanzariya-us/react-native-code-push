@@ -1,50 +1,7 @@
-// import type { TurboModule } from 'react-native';
-// import { TurboModuleRegistry } from 'react-native';
-
-
-// export interface Spec extends TurboModule {
-//   multiply(a: number, b: number): number;
-//   helloWorld(): Promise<string>;
-//   getValue(key: string): Promise<string>;
-//   getConfiguration(): Promise<{
-//     appVersion: string;
-//     clientUniqueId: string;
-//     deploymentKey: string;
-//     serverUrl: string;
-//     packageHash?: string;
-//   }>;
-//   checkForUpdate(deploymentKey?: string): Promise<{
-//     updateAvailable: boolean;
-//     appVersion: string;
-//     description?: string;
-//     label?: string;
-//     packageHash?: string;
-//     downloadUrl?: string;
-//     isMandatory?: boolean;
-//   } | null>;
-//   getCurrentPackage(): Promise<{
-//     appVersion: string;
-//     description: string;
-//     failedInstall: boolean;
-//     failedUpdate: boolean;
-//     isFirstRun: boolean;
-//     isPending: boolean;
-//     label: string;
-//     packageHash: string;
-//     packageSize: number;
-//   } | null>;
-
-//   // Add more methods as needed
-// }
-
-// export default TurboModuleRegistry.getEnforcing<Spec>('ReactNativeCodePush');
-
 import type { TurboModule } from 'react-native';
 import { TurboModuleRegistry } from 'react-native';
 
 export interface Spec extends TurboModule {
-  multiply(a: number, b: number): number;
-  helloWorld(): Promise<string>;
   getValue(key: string): Promise<string>;
 
   getConfiguration(): Promise<{
@@ -54,16 +11,6 @@ export interface Spec extends TurboModule {
     serverUrl: string;
     packageHash?: string;
   }>;
-
-  // checkForUpdate(deploymentKey?: string): Promise<{
-  //   updateAvailable: boolean;
-  //   appVersion: string;
-  //   description?: string;
-  //   label?: string;
-  //   packageHash?: string;
-  //   downloadUrl?: string;
-  //   isMandatory?: boolean;
-  // } | null>;
 
   getCurrentPackage(): Promise<{
     appVersion: string;
@@ -128,6 +75,57 @@ export interface Spec extends TurboModule {
     packageHash: string;
     packageSize: number;
   } | null>;
+
+  // ✅ ADD: Missing methods that were causing the compile errors
+  getNewStatusReport(): Promise<
+    | {
+      appVersion?: string;
+      status?: string;
+      package?: {
+        appVersion: string;
+        deploymentKey: string;
+        description: string;
+        label: string;
+        packageHash: string;
+        packageSize: number;
+      };
+      previousLabelOrAppVersion?: string;
+      previousDeploymentKey?: string;
+    }
+    | string
+  >;
+
+  recordStatusReported(statusReport: {
+    appVersion?: string;
+    status?: string;
+    package?: {
+      appVersion: string;
+      deploymentKey: string;
+      description: string;
+      label: string;
+      packageHash: string;
+      packageSize: number;
+    };
+    previousLabelOrAppVersion?: string;
+    previousDeploymentKey?: string;
+  }): void;
+
+  saveStatusReportForRetry(statusReport: {
+    appVersion?: string;
+    status?: string;
+    package?: {
+      appVersion: string;
+      deploymentKey: string;
+      description: string;
+      label: string;
+      packageHash: string;
+      packageSize: number;
+    };
+    previousLabelOrAppVersion?: string;
+    previousDeploymentKey?: string;
+  }): void;
+
+  clearUpdates(): Promise<void>;
 
   addListener(eventName: string): void;
   removeListeners(count: number): void;

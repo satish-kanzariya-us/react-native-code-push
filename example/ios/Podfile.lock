@@ -1677,8 +1677,10 @@ PODS:
     - ReactCodegen
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
+    - SSZipArchive (~> 2.4)
     - Yoga
   - SocketRocket (0.7.1)
+  - SSZipArchive (2.4.3)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -1759,6 +1761,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - SocketRocket
+    - SSZipArchive
 
 EXTERNAL SOURCES:
   boost:
@@ -1975,8 +1978,9 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 04d5eb15eb46be6720e17a4a7fa92940a776e584
   ReactCodegen: c63eda03ba1d94353fb97b031fc84f75a0d125ba
   ReactCommon: 76d2dc87136d0a667678668b86f0fca0c16fdeb0
-  ReactNativeCodePush: 2271c89a709c949d303782a401399392647acdec
+  ReactNativeCodePush: d8b8975a342ed51184b0f4e6b92c4154adcc07f6
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  SSZipArchive: fe6a26b2a54d5a0890f2567b5cc6de5caa600aef
   Yoga: c758bfb934100bb4bf9cbaccb52557cee35e8bdf
 
 PODFILE CHECKSUM: 6b5755d6501cc5a4612011efe952ddea764bf1e2
