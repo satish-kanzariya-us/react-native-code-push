@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ReactNativeCodePushExample</string>
+    <string moduleConfig="true" name="CodePushDeploymentKey">Epk2udCUlKzoSiK0KSv3ysgQ6TrlMRzI1sI</string>
+    <string moduleConfig="true" name="CodePushServerUrl">https://codepush-server-v2-dev.appsonair.com</string>
+</resources>
