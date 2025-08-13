@@ -2,7 +2,6 @@
 #import <React/RCTBridge.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTUtils.h>
-#import <SSZipArchive/SSZipArchive.h>
 
 @interface ReactNativeCodePush()
 
@@ -13,6 +12,20 @@
 @end
 
 @implementation ReactNativeCodePush
+
+// ✅ ADD: Required TurboModule methods
++ (NSString *)moduleName {
+    return @"ReactNativeCodePush";
+}
+
++ (BOOL)requiresMainQueueSetup {
+    return YES;
+}
+
+// ✅ ADD: Module name for TurboModule registration
+- (NSString *)name {
+    return @"ReactNativeCodePush";
+}
 
 // Constants
 static NSString * const CodePushPreferencesKey = @"CodePush";
@@ -36,8 +49,6 @@ static NSString * const RetryDeploymentReportKey = @"CODE_PUSH_RETRY_DEPLOYMENT_
 static const NSInteger UpdateStateLatest = 0;
 static const NSInteger UpdateStatePending = 1;
 static const NSInteger UpdateStateRunning = 2;
-
-RCT_EXPORT_MODULE()
 
 - (instancetype)init {
     if (self = [super init]) {
@@ -65,6 +76,7 @@ RCT_EXPORT_MODULE()
     return self;
 }
 
+
 - (void)logData:(NSString *)message data:(id)data {
     NSString *logMessage;
     if (data) {
@@ -73,10 +85,6 @@ RCT_EXPORT_MODULE()
         logMessage = message;
     }
     NSLog(@"[ReactNativeCodePush CodePush] %@", logMessage);
-}
-
-+ (BOOL)requiresMainQueueSetup {
-    return YES;
 }
 
 - (NSDictionary *)constantsToExport {
@@ -91,7 +99,7 @@ RCT_EXPORT_MODULE()
     };
 }
 
-RCT_EXPORT_METHOD(getValue:(NSString *)key resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getValue:(NSString *)key resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getValue() called" data:[NSString stringWithFormat:@"key=%@", key]];
     @try {
         NSString *value = [self.settings objectForKey:key] ?: @"";
@@ -104,7 +112,7 @@ RCT_EXPORT_METHOD(getValue:(NSString *)key resolve:(RCTPromiseResolveBlock)resol
     }
 }
 
-RCT_EXPORT_METHOD(getConfiguration:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getConfiguration:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getConfiguration() called" data:nil];
     @try {
         NSString *appVersion = [self getAppVersion];
@@ -134,7 +142,7 @@ RCT_EXPORT_METHOD(getConfiguration:(RCTPromiseResolveBlock)resolve reject:(RCTPr
     }
 }
 
-RCT_EXPORT_METHOD(getCurrentPackage:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getCurrentPackage:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getCurrentPackage() called" data:nil];
     @try {
         NSDictionary *currentPackage = [self.settings objectForKey:CurrentPackageKey];
@@ -164,7 +172,7 @@ RCT_EXPORT_METHOD(getCurrentPackage:(RCTPromiseResolveBlock)resolve reject:(RCTP
     }
 }
 
-RCT_EXPORT_METHOD(getUpdateMetadata:(double)updateState resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getUpdateMetadata:(double)updateState resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getUpdateMetadata() called" data:@(updateState)];
     @try {
         NSDictionary *currentPackage = [self.settings objectForKey:CurrentPackageKey];
@@ -221,7 +229,7 @@ RCT_EXPORT_METHOD(getUpdateMetadata:(double)updateState resolve:(RCTPromiseResol
     }
 }
 
-RCT_EXPORT_METHOD(getNewStatusReport:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getNewStatusReport:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getNewStatusReport() called" data:nil];
     @try {
         // Check if we need to report rollback
@@ -281,10 +289,10 @@ RCT_EXPORT_METHOD(getNewStatusReport:(RCTPromiseResolveBlock)resolve reject:(RCT
     }
 }
 
-RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary *)updatePackage
-                  notifyProgress:(BOOL)notifyProgress
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)downloadUpdate:(NSDictionary *)updatePackage
+        notifyProgress:(BOOL)notifyProgress
+               resolve:(RCTPromiseResolveBlock)resolve
+                reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"downloadUpdate() called"
              data:[NSString stringWithFormat:@"updatePackage=%@, notifyProgress=%@", updatePackage, @(notifyProgress)]];
     
@@ -308,7 +316,7 @@ RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary *)updatePackage
             @try {
                 [self logData:@"downloadUpdate() starting download" data:[NSString stringWithFormat:@"URL: %@", downloadUrl]];
                 
-                // ✅ FIX: Declare the callback variable with proper typing
+                // Declare the callback variable with proper typing
                 void (^progressCallback)(long long, long long) = nil;
                 if (notifyProgress) {
                     progressCallback = ^(long long bytesReceived, long long totalBytes) {
@@ -359,12 +367,11 @@ RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary *)updatePackage
     }
 }
 
-
-RCT_EXPORT_METHOD(installUpdate:(NSDictionary *)updatePackage
-                  installMode:(double)installMode
-                  minimumBackgroundDuration:(double)minimumBackgroundDuration
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)installUpdate:(NSDictionary *)updatePackage
+          installMode:(double)installMode
+minimumBackgroundDuration:(double)minimumBackgroundDuration
+              resolve:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"installUpdate() called"
              data:[NSString stringWithFormat:@"updatePackage=%@, installMode=%f, minimumBackgroundDuration=%f",
                    updatePackage, installMode, minimumBackgroundDuration]];
@@ -392,7 +399,7 @@ RCT_EXPORT_METHOD(installUpdate:(NSDictionary *)updatePackage
     }
 }
 
-RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)notifyApplicationReady:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"notifyApplicationReady() called" data:nil];
     @try {
         // Remove pending update status
@@ -405,9 +412,7 @@ RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve reject:
     }
 }
 
-RCT_EXPORT_METHOD(restartApp:(BOOL)onlyIfUpdateIsPending
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)restartApp:(BOOL)onlyIfUpdateIsPending resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"restartApp() called" data:@(onlyIfUpdateIsPending)];
     @try {
         BOOL isPending = [self isPendingUpdate:nil];
@@ -428,7 +433,7 @@ RCT_EXPORT_METHOD(restartApp:(BOOL)onlyIfUpdateIsPending
     }
 }
 
-RCT_EXPORT_METHOD(clearPendingRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)clearPendingRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"clearPendingRestart() called" data:nil];
     @try {
         NSMutableDictionary *currentPackage = [[self.settings objectForKey:CurrentPackageKey] mutableCopy];
@@ -444,9 +449,7 @@ RCT_EXPORT_METHOD(clearPendingRestart:(RCTPromiseResolveBlock)resolve reject:(RC
     }
 }
 
-RCT_EXPORT_METHOD(isFailedUpdate:(NSString *)packageHash
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)isFailedUpdate:(NSString *)packageHash resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"isFailedUpdate() called" data:packageHash];
     @try {
         BOOL isFailed = [self isFailedHash:packageHash];
@@ -458,7 +461,7 @@ RCT_EXPORT_METHOD(isFailedUpdate:(NSString *)packageHash
     }
 }
 
-RCT_EXPORT_METHOD(getLatestRollbackInfo:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)getLatestRollbackInfo:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"getLatestRollbackInfo() called" data:nil];
     @try {
         NSDictionary *rollbackInfo = [self.settings objectForKey:LatestRollbackInfoKey];
@@ -473,9 +476,7 @@ RCT_EXPORT_METHOD(getLatestRollbackInfo:(RCTPromiseResolveBlock)resolve reject:(
     }
 }
 
-RCT_EXPORT_METHOD(setLatestRollbackInfo:(NSString *)packageHash
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)setLatestRollbackInfo:(NSString *)packageHash resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"setLatestRollbackInfo() called" data:packageHash];
     @try {
         NSDictionary *existingRollbackInfo = [self.settings objectForKey:LatestRollbackInfoKey];
@@ -504,9 +505,7 @@ RCT_EXPORT_METHOD(setLatestRollbackInfo:(NSString *)packageHash
     }
 }
 
-RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject) {
+- (void)isFirstRun:(NSString *)packageHash resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"isFirstRun() called" data:packageHash];
     @try {
         BOOL didUpdate = [[self.settings objectForKey:@"didUpdate"] boolValue];
@@ -521,7 +520,7 @@ RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
     }
 }
 
-RCT_EXPORT_METHOD(allowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)allowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"allowRestart() called" data:nil];
     @try {
         [self.settings setObject:@YES forKey:@"restartAllowed"];
@@ -533,7 +532,7 @@ RCT_EXPORT_METHOD(allowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromis
     }
 }
 
-RCT_EXPORT_METHOD(disallowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)disallowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"disallowRestart() called" data:nil];
     @try {
         [self.settings setObject:@NO forKey:@"restartAllowed"];
@@ -545,7 +544,7 @@ RCT_EXPORT_METHOD(disallowRestart:(RCTPromiseResolveBlock)resolve reject:(RCTPro
     }
 }
 
-RCT_EXPORT_METHOD(recordStatusReported:(NSDictionary *)statusReport) {
+- (void)recordStatusReported:(NSDictionary *)statusReport {
     [self logData:@"recordStatusReported() called" data:nil];
     @try {
         // Don't record rollback reports
@@ -574,7 +573,7 @@ RCT_EXPORT_METHOD(recordStatusReported:(NSDictionary *)statusReport) {
     }
 }
 
-RCT_EXPORT_METHOD(saveStatusReportForRetry:(NSDictionary *)statusReport) {
+- (void)saveStatusReportForRetry:(NSDictionary *)statusReport {
     [self logData:@"saveStatusReportForRetry() called" data:nil];
     @try {
         [self.settings setObject:statusReport forKey:RetryDeploymentReportKey];
@@ -585,7 +584,7 @@ RCT_EXPORT_METHOD(saveStatusReportForRetry:(NSDictionary *)statusReport) {
     }
 }
 
-RCT_EXPORT_METHOD(clearUpdates:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+- (void)clearUpdates:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     [self logData:@"clearUpdates() called" data:nil];
     @try {
         // Clear all CodePush related data
@@ -612,260 +611,260 @@ RCT_EXPORT_METHOD(clearUpdates:(RCTPromiseResolveBlock)resolve reject:(RCTPromis
     }
 }
 
-RCT_EXPORT_METHOD(addListener:(NSString *)eventName) {
+- (void)addListener:(NSString *)eventName {
     [self logData:@"addListener() called" data:eventName];
 }
 
-RCT_EXPORT_METHOD(removeListeners:(double)count) {
+- (void)removeListeners:(double)count {
     [self logData:@"removeListeners() called" data:@(count)];
 }
 
 // ============ HELPER METHODS ============
 
 - (NSString *)getAppVersion {
-  [self logData:@"getAppVersion() called" data:nil];
-  NSString *version = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"] ?: @"1.0.0";
-  [self logData:@"getAppVersion() result" data:version];
-  return version;
+    [self logData:@"getAppVersion() called" data:nil];
+    NSString *version = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"] ?: @"1.0.0";
+    [self logData:@"getAppVersion() result" data:version];
+    return version;
 }
 
 - (NSString *)getClientUniqueId {
-  [self logData:@"getClientUniqueId() called" data:nil];
-  [self logData:@"getClientUniqueId() result" data:[NSString stringWithFormat:@"%@...", [self.clientUniqueId substringToIndex:MIN(8, self.clientUniqueId.length)]]];
-  return self.clientUniqueId;
+    [self logData:@"getClientUniqueId() called" data:nil];
+    [self logData:@"getClientUniqueId() result" data:[NSString stringWithFormat:@"%@...", [self.clientUniqueId substringToIndex:MIN(8, self.clientUniqueId.length)]]];
+    return self.clientUniqueId;
 }
 
 - (NSString *)getDeploymentKey {
-  [self logData:@"getDeploymentKey() called" data:nil];
-  
-  NSString *key = [self.settings objectForKey:DeploymentKeyKey];
-  [self logData:@"getDeploymentKey() from NSUserDefaults" data:[NSString stringWithFormat:@"key=%@...", [key substringToIndex:MIN(10, key.length)] ?: @"null"]];
-  
-  if (!key || key.length == 0) {
-    key = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CodePushDeploymentKey"];
-    [self logData:@"getDeploymentKey() from Info.plist" data:[NSString stringWithFormat:@"key=%@...", [key substringToIndex:MIN(10, key.length)] ?: @"null"]];
-  }
-  
-  NSString *result = key ?: @"";
-  [self logData:@"getDeploymentKey() final result" data:[NSString stringWithFormat:@"key=%@...", [result substringToIndex:MIN(10, result.length)]]];
-  return result;
+    [self logData:@"getDeploymentKey() called" data:nil];
+    
+    NSString *key = [self.settings objectForKey:DeploymentKeyKey];
+    [self logData:@"getDeploymentKey() from NSUserDefaults" data:[NSString stringWithFormat:@"key=%@...", [key substringToIndex:MIN(10, key.length)] ?: @"null"]];
+    
+    if (!key || key.length == 0) {
+        key = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CodePushDeploymentKey"];
+        [self logData:@"getDeploymentKey() from Info.plist" data:[NSString stringWithFormat:@"key=%@...", [key substringToIndex:MIN(10, key.length)] ?: @"null"]];
+    }
+    
+    NSString *result = key ?: @"";
+    [self logData:@"getDeploymentKey() final result" data:[NSString stringWithFormat:@"key=%@...", [result substringToIndex:MIN(10, result.length)]]];
+    return result;
 }
 
 - (NSString *)getServerUrl {
-  [self logData:@"getServerUrl() called" data:nil];
-  
-  NSString *url = [self.settings objectForKey:ServerUrlKey];
-  [self logData:@"getServerUrl() from NSUserDefaults" data:url ?: @"null"];
-  
-  if (!url || url.length == 0) {
-    url = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CodePushServerURL"];
-    [self logData:@"getServerUrl() from Info.plist" data:url ?: @"null"];
-  }
-  
-  NSString *result = url ?: @"https://codepush.appcenter.ms/";
-  [self logData:@"getServerUrl() final result" data:result];
-  return result;
+    [self logData:@"getServerUrl() called" data:nil];
+    
+    NSString *url = [self.settings objectForKey:ServerUrlKey];
+    [self logData:@"getServerUrl() from NSUserDefaults" data:url ?: @"null"];
+    
+    if (!url || url.length == 0) {
+        url = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CodePushServerURL"];
+        [self logData:@"getServerUrl() from Info.plist" data:url ?: @"null"];
+    }
+    
+    NSString *result = url ?: @"https://codepush.appcenter.ms/";
+    [self logData:@"getServerUrl() final result" data:result];
+    return result;
 }
 
 - (NSString *)getCurrentPackageHash {
-  [self logData:@"getCurrentPackageHash() called" data:nil];
-  NSDictionary *currentPackage = [self.settings objectForKey:CurrentPackageKey];
-  NSString *hash = currentPackage[PackageHashKey];
-  [self logData:@"getCurrentPackageHash() result" data:hash ?: @"null (no package found)"];
-  return hash;
+    [self logData:@"getCurrentPackageHash() called" data:nil];
+    NSDictionary *currentPackage = [self.settings objectForKey:CurrentPackageKey];
+    NSString *hash = currentPackage[PackageHashKey];
+    [self logData:@"getCurrentPackageHash() result" data:hash ?: @"null (no package found)"];
+    return hash;
 }
 
 - (BOOL)isPendingUpdate:(NSString *)packageHash {
-  NSDictionary *pendingUpdate = [self.settings objectForKey:PendingUpdateKey];
-  if (pendingUpdate) {
-    BOOL isLoading = [pendingUpdate[PendingUpdateIsLoadingKey] boolValue];
-    NSString *pendingHash = pendingUpdate[PendingUpdateHashKey];
-    
-    return !isLoading && (packageHash == nil || [pendingHash isEqualToString:packageHash]);
-  }
-  return NO;
+    NSDictionary *pendingUpdate = [self.settings objectForKey:PendingUpdateKey];
+    if (pendingUpdate) {
+        BOOL isLoading = [pendingUpdate[PendingUpdateIsLoadingKey] boolValue];
+        NSString *pendingHash = pendingUpdate[PendingUpdateHashKey];
+        
+        return !isLoading && (packageHash == nil || [pendingHash isEqualToString:packageHash]);
+    }
+    return NO;
 }
 
 - (BOOL)isRunningBinaryVersion {
-  // This would check if we're running the original binary version vs a CodePush update
-  return [self getCurrentPackageHash] == nil;
+    // This would check if we're running the original binary version vs a CodePush update
+    return [self getCurrentPackageHash] == nil;
 }
 
 - (NSData *)downloadUpdateFromUrl:(NSString *)downloadUrl progressCallback:(void (^)(long long, long long))progressCallback {
-  NSURL *url = [NSURL URLWithString:downloadUrl];
-  NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-  [request setValue:@"CodePush/1.0 (iOS)" forHTTPHeaderField:@"User-Agent"];
-  
-  NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-  NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
-  
-  __block NSData *downloadedData = nil;
-  __block NSError *downloadError = nil;
-  
-  dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-  
-  NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-    if (error) {
-      downloadError = error;
-    } else {
-      downloadedData = data;
+    NSURL *url = [NSURL URLWithString:downloadUrl];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setValue:@"CodePush/1.0 (iOS)" forHTTPHeaderField:@"User-Agent"];
+    
+    NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
+    
+    __block NSData *downloadedData = nil;
+    __block NSError *downloadError = nil;
+    
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            downloadError = error;
+        } else {
+            downloadedData = data;
+        }
+        dispatch_semaphore_signal(semaphore);
+    }];
+    
+    [task resume];
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    
+    if (downloadError) {
+        @throw [NSException exceptionWithName:@"DownloadError" reason:downloadError.localizedDescription userInfo:nil];
     }
-    dispatch_semaphore_signal(semaphore);
-  }];
-  
-  [task resume];
-  dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-  
-  if (downloadError) {
-    @throw [NSException exceptionWithName:@"DownloadError" reason:downloadError.localizedDescription userInfo:nil];
-  }
-  
-  return downloadedData;
+    
+    return downloadedData;
 }
 
 - (BOOL)saveDownloadedPackage:(NSData *)data packageHash:(NSString *)packageHash label:(NSString *)label updatePackage:(NSDictionary *)updatePackage {
-  [self logData:@"saveDownloadedPackage() called"
-           data:[NSString stringWithFormat:@"dataSize=%lu bytes, packageHash=%@, label=%@", (unsigned long)data.length, packageHash, label]];
-  @try {
-    // Create package directory
-    NSString *packageDir = [self.codePushDirectory stringByAppendingPathComponent:packageHash];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    
-    if (![fileManager fileExistsAtPath:packageDir]) {
-      [fileManager createDirectoryAtPath:packageDir withIntermediateDirectories:YES attributes:nil error:nil];
+    [self logData:@"saveDownloadedPackage() called"
+             data:[NSString stringWithFormat:@"dataSize=%lu bytes, packageHash=%@, label=%@", (unsigned long)data.length, packageHash, label]];
+    @try {
+        // Create package directory
+        NSString *packageDir = [self.codePushDirectory stringByAppendingPathComponent:packageHash];
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        
+        if (![fileManager fileExistsAtPath:packageDir]) {
+            [fileManager createDirectoryAtPath:packageDir withIntermediateDirectories:YES attributes:nil error:nil];
+        }
+        
+        // Save the zip file
+        NSString *zipPath = [packageDir stringByAppendingPathComponent:@"update.zip"];
+        [data writeToFile:zipPath atomically:YES];
+        
+        // Save package metadata
+        NSMutableDictionary *packageMetadata = [updatePackage mutableCopy];
+        packageMetadata[@"packageHash"] = packageHash;
+        packageMetadata[@"label"] = label;
+        packageMetadata[@"packageSize"] = @(data.length);
+        packageMetadata[@"downloadTime"] = @([[NSDate date] timeIntervalSince1970] * 1000);
+        
+        NSString *metadataPath = [packageDir stringByAppendingPathComponent:@"metadata.json"];
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:packageMetadata options:NSJSONWritingPrettyPrinted error:nil];
+        [jsonData writeToFile:metadataPath atomically:YES];
+        
+        [self logData:@"saveDownloadedPackage() success" data:[NSString stringWithFormat:@"Package saved to %@", packageDir]];
+        return YES;
+    } @catch (NSException *exception) {
+        [self logData:@"saveDownloadedPackage() error" data:exception.reason];
+        return NO;
     }
-    
-    // Save the zip file
-    NSString *zipPath = [packageDir stringByAppendingPathComponent:@"update.zip"];
-    [data writeToFile:zipPath atomically:YES];
-    
-    // Save package metadata
-    NSMutableDictionary *packageMetadata = [updatePackage mutableCopy];
-    packageMetadata[@"packageHash"] = packageHash;
-    packageMetadata[@"label"] = label;
-    packageMetadata[@"packageSize"] = @(data.length);
-    packageMetadata[@"downloadTime"] = @([[NSDate date] timeIntervalSince1970] * 1000);
-    
-    NSString *metadataPath = [packageDir stringByAppendingPathComponent:@"metadata.json"];
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:packageMetadata options:NSJSONWritingPrettyPrinted error:nil];
-    [jsonData writeToFile:metadataPath atomically:YES];
-    
-    [self logData:@"saveDownloadedPackage() success" data:[NSString stringWithFormat:@"Package saved to %@", packageDir]];
-    return YES;
-  } @catch (NSException *exception) {
-    [self logData:@"saveDownloadedPackage() error" data:exception.reason];
-    return NO;
-  }
 }
 
 - (NSDictionary *)getPackageByHash:(NSString *)packageHash {
-  @try {
-    NSString *packageDir = [self.codePushDirectory stringByAppendingPathComponent:packageHash];
-    NSString *metadataPath = [packageDir stringByAppendingPathComponent:@"metadata.json"];
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if ([fileManager fileExistsAtPath:metadataPath]) {
-      NSData *jsonData = [NSData dataWithContentsOfFile:metadataPath];
-      NSDictionary *metadata = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
-      return metadata;
+    @try {
+        NSString *packageDir = [self.codePushDirectory stringByAppendingPathComponent:packageHash];
+        NSString *metadataPath = [packageDir stringByAppendingPathComponent:@"metadata.json"];
+        
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        if ([fileManager fileExistsAtPath:metadataPath]) {
+            NSData *jsonData = [NSData dataWithContentsOfFile:metadataPath];
+            NSDictionary *metadata = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+            return metadata;
+        }
+    } @catch (NSException *exception) {
+        // Ignore
     }
-  } @catch (NSException *exception) {
-    // Ignore
-  }
-  return nil;
+    return nil;
 }
 
 - (void)savePendingUpdate:(NSString *)packageHash isLoading:(BOOL)isLoading {
-  NSDictionary *pendingUpdate = @{
-    PendingUpdateHashKey: packageHash,
-    PendingUpdateIsLoadingKey: @(isLoading)
-  };
-  
-  [self.settings setObject:pendingUpdate forKey:PendingUpdateKey];
-  [self.settings synchronize];
+    NSDictionary *pendingUpdate = @{
+        PendingUpdateHashKey: packageHash,
+        PendingUpdateIsLoadingKey: @(isLoading)
+    };
+    
+    [self.settings setObject:pendingUpdate forKey:PendingUpdateKey];
+    [self.settings synchronize];
 }
 
 - (void)removePendingUpdate {
-  [self.settings removeObjectForKey:PendingUpdateKey];
-  [self.settings synchronize];
+    [self.settings removeObjectForKey:PendingUpdateKey];
+    [self.settings synchronize];
 }
 
 - (NSArray *)getFailedUpdates {
-  NSArray *failedUpdates = [self.settings objectForKey:FailedUpdatesKey];
-  return failedUpdates ?: @[];
+    NSArray *failedUpdates = [self.settings objectForKey:FailedUpdatesKey];
+    return failedUpdates ?: @[];
 }
 
 - (BOOL)isFailedHash:(NSString *)packageHash {
-  NSArray *failedUpdates = [self getFailedUpdates];
-  for (NSDictionary *failedPackage in failedUpdates) {
-    NSString *failedHash = failedPackage[PackageHashKey];
-    if ([packageHash isEqualToString:failedHash]) {
-      return YES;
+    NSArray *failedUpdates = [self getFailedUpdates];
+    for (NSDictionary *failedPackage in failedUpdates) {
+        NSString *failedHash = failedPackage[PackageHashKey];
+        if ([packageHash isEqualToString:failedHash]) {
+            return YES;
+        }
     }
-  }
-  return NO;
+    return NO;
 }
 
 - (void)clearRetryStatusReport {
-  [self.settings removeObjectForKey:RetryDeploymentReportKey];
-  [self.settings synchronize];
+    [self.settings removeObjectForKey:RetryDeploymentReportKey];
+    [self.settings synchronize];
 }
 
 // Status report creators
 - (NSDictionary *)createRollbackReport:(NSDictionary *)failedPackage {
-  return @{
-    @"package": failedPackage,
-    @"status": @"DeploymentFailed"
-  };
+    return @{
+        @"package": failedPackage,
+        @"status": @"DeploymentFailed"
+    };
 }
 
 - (NSDictionary *)createUpdateReport:(NSDictionary *)currentPackage {
-  return @{
-    @"package": currentPackage,
-    @"status": @"DeploymentSucceeded"
-  };
+    return @{
+        @"package": currentPackage,
+        @"status": @"DeploymentSucceeded"
+    };
 }
 
 - (NSDictionary *)createBinaryUpdateReport:(NSString *)appVersion {
-  NSString *previousStatusReportIdentifier = [self.settings objectForKey:LastDeploymentReportKey];
-  
-  if (!previousStatusReportIdentifier) {
-    [self clearRetryStatusReport];
-    return @{
-      @"appVersion": appVersion
-    };
-  } else if (![previousStatusReportIdentifier isEqualToString:appVersion]) {
-    [self clearRetryStatusReport];
-    return @{
-      @"appVersion": appVersion,
-      @"previousLabelOrAppVersion": previousStatusReportIdentifier
-    };
-  }
-  
-  return nil;
+    NSString *previousStatusReportIdentifier = [self.settings objectForKey:LastDeploymentReportKey];
+    
+    if (!previousStatusReportIdentifier) {
+        [self clearRetryStatusReport];
+        return @{
+            @"appVersion": appVersion
+        };
+    } else if (![previousStatusReportIdentifier isEqualToString:appVersion]) {
+        [self clearRetryStatusReport];
+        return @{
+            @"appVersion": appVersion,
+            @"previousLabelOrAppVersion": previousStatusReportIdentifier
+        };
+    }
+    
+    return nil;
 }
 
 - (NSString *)getPackageStatusReportIdentifier:(NSDictionary *)packageDict {
-  NSString *deploymentKey = packageDict[@"deploymentKey"];
-  NSString *label = packageDict[@"label"];
-  
-  if (deploymentKey && label) {
-    return [NSString stringWithFormat:@"%@:%@", deploymentKey, label];
-  }
-  
-  return nil;
+    NSString *deploymentKey = packageDict[@"deploymentKey"];
+    NSString *label = packageDict[@"label"];
+    
+    if (deploymentKey && label) {
+        return [NSString stringWithFormat:@"%@:%@", deploymentKey, label];
+    }
+    
+    return nil;
 }
 
 - (NSError *)createErrorFromException:(NSException *)exception {
-  return [NSError errorWithDomain:@"CodePushError" code:0 userInfo:@{NSLocalizedDescriptionKey: exception.reason ?: @"Unknown error"}];
+    return [NSError errorWithDomain:@"CodePushError" code:0 userInfo:@{NSLocalizedDescriptionKey: exception.reason ?: @"Unknown error"}];
 }
 
-
- - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-     (const facebook::react::ObjCTurboModule::InitParams &)params
- {
-     return std::make_shared<facebook::react::NativeReactNativeCodePushSpecJSI>(params);
- }
+// TurboModule registration method
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params {
+    return std::make_shared<facebook::react::NativeReactNativeCodePushSpecJSI>(params);
+}
+#endif
 
 @end
-
