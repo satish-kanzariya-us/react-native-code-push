@@ -1,24 +1,52 @@
-import { Text, View, StyleSheet } from 'react-native';
-import CodePush from '@logicwind/react-native-code-push';
-import { useEffect } from 'react';
+// App.tsx
+import React from 'react';
+import { View, Text, Button } from 'react-native';
+import CodePush, {
+  SyncStatus,
+  InstallMode,
+} from '@logicwind/react-native-code-push';
 
-export default function App() {
-  useEffect(() => {
-    CodePush.sync({}, (status) => {
-      console.log(status);
-    });
-  }, []);
+function App() {
+  const [syncStatus, setSyncStatus] = React.useState<SyncStatus | null>(null);
+  const [downloadProgress, setDownloadProgress] = React.useState<number>(0);
+
+  const handleSync = () => {
+    CodePush.sync(
+      {
+        installMode: InstallMode.ON_NEXT_RESTART,
+        mandatoryInstallMode: InstallMode.IMMEDIATE,
+        updateDialog: {
+          title: 'Update Available',
+          optionalUpdateMessage:
+            'A new version is available. Would you like to install it?',
+          optionalInstallButtonLabel: 'Install',
+          optionalIgnoreButtonLabel: 'Later',
+        },
+      },
+      (status) => {
+        console.log('Sync status:', status);
+        setSyncStatus(status);
+      },
+      (progress) => {
+        console.log('Download progress:', progress);
+        const percentage = (progress.receivedBytes / progress.totalBytes) * 100;
+        setDownloadProgress(percentage);
+      }
+    );
+  };
+
   return (
-    <View style={styles.container}>
-      <Text>Codepush V2</Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text>CodePush Example V1</Text>
+      <Text>Status: {syncStatus}</Text>
+      <Text>Progress: {downloadProgress.toFixed(1)}%</Text>
+      <Button title="Check for Updates" onPress={handleSync} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+// Export with CodePush decorator
+export default CodePush({
+  checkFrequency: CodePush.CheckFrequency.ON_APP_START,
+  installMode: CodePush.InstallMode.ON_NEXT_RESTART,
+})(App);

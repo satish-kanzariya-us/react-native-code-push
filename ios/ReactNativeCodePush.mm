@@ -2,6 +2,7 @@
 #import <React/RCTBridge.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTUtils.h>
+#import <React/RCTReloadCommand.h>
 
 @interface ReactNativeCodePush()
 
@@ -22,11 +23,13 @@
     return YES;
 }
 
-// ✅ ADD: Module name for TurboModule registration
 - (NSString *)name {
     return @"ReactNativeCodePush";
 }
 
+- (NSArray<NSString *> *)supportedEvents {
+    return @[@"CodePushDownloadProgress"];
+}
 // Constants
 static NSString * const CodePushPreferencesKey = @"CodePush";
 static NSString * const CurrentPackageKey = @"currentPackage";
@@ -316,12 +319,20 @@ static const NSInteger UpdateStateRunning = 2;
             @try {
                 [self logData:@"downloadUpdate() starting download" data:[NSString stringWithFormat:@"URL: %@", downloadUrl]];
                 
-                // Declare the callback variable with proper typing
+                // Progress callback with event emission
                 void (^progressCallback)(long long, long long) = nil;
                 if (notifyProgress) {
                     progressCallback = ^(long long bytesReceived, long long totalBytes) {
                         [self logData:@"downloadUpdate() progress"
                                  data:[NSString stringWithFormat:@"Received: %lld / Total: %lld bytes", bytesReceived, totalBytes]];
+                        
+                        // ✅ FIX: Emit progress event (now properly inherited from RCTEventEmitter)
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self sendEventWithName:@"CodePushDownloadProgress" body:@{
+                                @"receivedBytes": @(bytesReceived),
+                                @"totalBytes": @(totalBytes)
+                            }];
+                        });
                     };
                 }
                 
@@ -367,6 +378,34 @@ static const NSInteger UpdateStateRunning = 2;
     }
 }
 
+- (void)restartApp:(BOOL)onlyIfUpdateIsPending resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+    [self logData:@"restartApp() called" data:@(onlyIfUpdateIsPending)];
+    @try {
+        BOOL isPending = [self isPendingUpdate:nil];
+        BOOL shouldRestart = !onlyIfUpdateIsPending || isPending;
+        [self logData:@"restartApp() decision"
+                 data:[NSString stringWithFormat:@"isPending=%@, shouldRestart=%@", @(isPending), @(shouldRestart)]];
+        
+        if (shouldRestart) {
+            [self logData:@"restartApp() restarting app" data:nil];
+            
+            // ✅ FIX: Real app restart using RCTReloadCommand
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:RCTTriggerReloadCommandNotification object:nil];
+            });
+            
+            resolve(@"App restarted");
+        } else {
+            [self logData:@"restartApp() restart skipped" data:nil];
+            resolve(@"No pending update, restart not needed");
+        }
+    } @catch (NSException *exception) {
+        [self logData:@"restartApp() error" data:exception.reason];
+        reject(@"ERROR", @"Failed to restart app", [self createErrorFromException:exception]);
+    }
+}
+
+
 - (void)installUpdate:(NSDictionary *)updatePackage
           installMode:(double)installMode
 minimumBackgroundDuration:(double)minimumBackgroundDuration
@@ -409,27 +448,6 @@ minimumBackgroundDuration:(double)minimumBackgroundDuration
     } @catch (NSException *exception) {
         [self logData:@"notifyApplicationReady() error" data:exception.reason];
         reject(@"ERROR", @"Failed to notify application ready", [self createErrorFromException:exception]);
-    }
-}
-
-- (void)restartApp:(BOOL)onlyIfUpdateIsPending resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-    [self logData:@"restartApp() called" data:@(onlyIfUpdateIsPending)];
-    @try {
-        BOOL isPending = [self isPendingUpdate:nil];
-        BOOL shouldRestart = !onlyIfUpdateIsPending || isPending;
-        [self logData:@"restartApp() decision"
-                 data:[NSString stringWithFormat:@"isPending=%@, shouldRestart=%@", @(isPending), @(shouldRestart)]];
-        
-        if (shouldRestart) {
-            [self logData:@"restartApp() restart requested" data:nil];
-            resolve(@"App restart requested");
-        } else {
-            [self logData:@"restartApp() restart skipped" data:nil];
-            resolve(@"No pending update, restart not needed");
-        }
-    } @catch (NSException *exception) {
-        [self logData:@"restartApp() error" data:exception.reason];
-        reject(@"ERROR", @"Failed to restart app", [self createErrorFromException:exception]);
     }
 }
 

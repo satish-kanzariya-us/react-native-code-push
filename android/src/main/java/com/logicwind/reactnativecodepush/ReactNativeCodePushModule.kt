@@ -3,9 +3,11 @@ package com.logicwind.reactnativecodepush
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.turbomodule.core.interfaces.TurboModule
+import com.facebook.react.modules.core.DeviceEventManagerModule  
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.content.Intent                                      
 import android.util.Log
 import org.json.JSONObject
 import org.json.JSONException
@@ -21,7 +23,7 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
 
     companion object {
         const val NAME = "ReactNativeCodePush"
-        
+
         // Install modes
         const val IMMEDIATE = 0
         const val ON_NEXT_RESTART = 1
@@ -52,15 +54,15 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
         const val RETRY_DEPLOYMENT_REPORT_KEY = "CODE_PUSH_RETRY_DEPLOYMENT_REPORT"
     }
 
-    private val sharedPreferences: SharedPreferences = 
-        reactContext.getSharedPreferences(CODE_PUSH_PREFERENCES, Context.MODE_PRIVATE)
-    
+    private val sharedPreferences: SharedPreferences =
+      reactContext.getSharedPreferences(CODE_PUSH_PREFERENCES, Context.MODE_PRIVATE)
+
     private val codePushDirectory: File = File(reactContext.filesDir, "CodePush")
 
     init {
         // Ensure CodePush directory exists
         if (!codePushDirectory.exists()) {
-            codePushDirectory.mkdirs()
+        codePushDirectory.mkdirs()
         }
     }
 
@@ -292,9 +294,21 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             Thread {
                 try {
                     logData("downloadUpdate() starting download", "URL: $downloadUrl")
+                    
                     val downloadedBytes = HttpUtils.downloadUpdate(downloadUrl) { bytesReceived, totalBytes ->
                         if (notifyProgress) {
                             logData("downloadUpdate() progress", "Received: $bytesReceived / Total: $totalBytes bytes")
+                            
+                            // ✅ FIX: Proper event emission
+                            val progressData = WritableNativeMap().apply {
+                                putDouble("receivedBytes", bytesReceived.toDouble())
+                                putDouble("totalBytes", totalBytes.toDouble())
+                            }
+                            
+                            // Emit to JavaScript
+                            reactApplicationContext
+                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                .emit("CodePushDownloadProgress", progressData)
                         }
                     }
                     
@@ -315,16 +329,19 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
                     } else {
                         promise.reject("ERROR", "Failed to save downloaded package")
                     }
+                    
                 } catch (e: Exception) {
                     logData("downloadUpdate() download error", "Error: ${e.message}")
                     promise.reject("DOWNLOAD_ERROR", "Failed to download update: ${e.message}", e)
                 }
             }.start()
+            
         } catch (e: Exception) {
             logData("downloadUpdate() general error", e.message)
             promise.reject("ERROR", "Failed to download update", e)
         }
     }
+
 
     override fun installUpdate(
         updatePackage: ReadableMap,
@@ -380,8 +397,18 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             logData("restartApp() decision", "isPending=$isPending, shouldRestart=$shouldRestart")
             
             if (shouldRestart) {
-                logData("restartApp() restart requested")
-                promise.resolve("App restart requested")
+                logData("restartApp() restarting app")
+                
+                // ✅ FIX: Proper app restart
+                val context = reactApplicationContext
+                val packageManager = context.packageManager
+                val intent = packageManager.getLaunchIntentForPackage(context.packageName)
+                val componentName = intent?.component
+                val mainIntent = Intent.makeRestartActivityTask(componentName)
+                context.startActivity(mainIntent)
+                Runtime.getRuntime().exit(0)
+                
+                promise.resolve("App restarted")
             } else {
                 logData("restartApp() restart skipped")
                 promise.resolve("No pending update, restart not needed")
@@ -391,7 +418,6 @@ class ReactNativeCodePushModule(reactContext: ReactApplicationContext) :
             promise.reject("ERROR", "Failed to restart app", e)
         }
     }
-
     override fun clearPendingRestart(promise: Promise) {
         logData("clearPendingRestart() called")
         try {
